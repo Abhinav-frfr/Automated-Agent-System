@@ -1,0 +1,80 @@
+[
+  {
+    "role": "SystemMessage",
+    "content": "You are an autonomous accounts-payable worker. You achieve the user's goal by choosing tools one at a time. Do not use thinking blocks.\n\nTASK TYPE\nWRITE\n\nDESIRED OUTCOME\nEnter and verify the last abccorp invoice in the internal system.\n\nWhat \"done\" looks like for this task type\n- READ:      identify the correct single invoice and report vendor / amount / due_date / invoice_date.\n- AGGREGATE: gather every matching invoice and produce the list or count.\n- VERIFY:    look up the internal system and report whether the invoice exists, with evidence.\n- WRITE:     only submit because the user asked to process/enter/record. Check for an existing\n             record first (search_invoice), submit, then ALWAYS verify_invoice against the\n             values you read. You may not finalize a WRITE goal until verify_invoice returns\n             verified=true.\n\nLoop discipline (STRICT)\n- Each step: look at the tool results already in this conversation. If you already have the\n  information the DESIRED OUTCOME needs, call finalize_answer IMMEDIATELY.\n- Never call the same tool with the same arguments twice. If a call already returned a result,\n  that result is final.\n- After at most 3 tool calls you must either finalize_answer or call a tool you have not\n  yet called.\n\nRules\n- Never invent amounts, dates, invoice numbers, or IDs. Use only values returned by tools.\n- If a tool fails, try a different candidate or a different query once, then finalize with\n  what you have.\n- finalize_answer(summary, evidence) is how you finish.\n"
+  },
+  {
+    "role": "HumanMessage",
+    "content": "Process the last invoice of abccorp"
+  },
+  {
+    "role": "AIMessage",
+    "content": "",
+    "tool_calls": [
+      {
+        "name": "search_files",
+        "args": {
+          "query": "abccorp"
+        }
+      }
+    ]
+  },
+  {
+    "role": "ToolMessage",
+    "content": "{\"query\": \"abccorp\", \"count\": 3, \"files\": [{\"filename\": \"abccorp_august.pdf\", \"matched_by\": [\"filename\", \"content\"], \"vendor\": \"ABC Corp\", \"invoice_number\": \"ABC-2026-0801\", \"invoice_date\": \"August 1, 2026\", \"amount\": 9500.0, \"due_date\": \"September 1, 2026\", \"invoice_date_iso\": \"2026-08-01\", \"due_date_iso\": \"2026-09-01\"}, {\"filename\": \"abccorp_july.pdf\", \"matched_by\": [\"filename\", \"content\"], \"vendor\": \"ABC Corp\", \"invoice_number\": \"ABC-2026-0701\", \"invoice_date\": \"July 1, 2026\", \"amount\": 9000.0, \"due_date\": \"August 1, 2026\", \"invoice_date_iso\": \"2026-07-01\", \"due_date_iso\": \"2026-08-01\"}, {\"filename\": \"abccorp_september.pdf\", \"matched_by\": [\"filename\", \"content\"], \"vendor\": \"ABC Corp\", \"invoice_number\": \"ABC-2026-0901\", \"invoice_date\": \"September 1, 2026\", \"amount\": 9800.0, \"due_date\": \"October 20, 2026\", \"invoice_date_iso\": \"2026-09-01\", \"due_date_iso\": \"2026-10-20\"}]}"
+  },
+  {
+    "role": "AIMessage",
+    "content": "",
+    "tool_calls": [
+      {
+        "name": "search_invoice",
+        "args": {
+          "invoice_number": "ABC-2026-0901"
+        }
+      }
+    ]
+  },
+  {
+    "role": "ToolMessage",
+    "content": "{\"count\": 0, \"invoices\": []}"
+  },
+  {
+    "role": "AIMessage",
+    "content": "",
+    "tool_calls": [
+      {
+        "name": "submit_invoice",
+        "args": {
+          "amount": 9800,
+          "due_date": "2026-10-20",
+          "invoice_number": "ABC-2026-0901",
+          "vendor": "ABC Corp"
+        }
+      }
+    ]
+  },
+  {
+    "role": "ToolMessage",
+    "content": "{\"status\": \"SUCCESS\", \"invoice_id\": \"INV-9844\"}\n\n[coordinator] step 3/10. If the DESIRED OUTCOME is achievable with the data above, call finalize_answer NOW. Do not repeat any tool you have already called."
+  },
+  {
+    "role": "AIMessage",
+    "content": "",
+    "tool_calls": [
+      {
+        "name": "verify_invoice",
+        "args": {
+          "expected_amount": 9800,
+          "expected_due_date": "2026-10-20",
+          "expected_vendor": "ABC Corp",
+          "invoice_id": "INV-9844"
+        }
+      }
+    ]
+  },
+  {
+    "role": "ToolMessage",
+    "content": "{\"verified\": true, \"invoice_id\": \"INV-9844\", \"mismatches\": [], \"stored\": {\"invoice_id\": \"INV-9844\", \"vendor\": \"ABC Corp\", \"amount\": 9800.0, \"due_date\": \"2026-10-20\", \"status\": \"SUCCESS\", \"invoice_number\": \"ABC-2026-0901\"}}\n\n[coordinator] step 4/10. If the DESIRED OUTCOME is achievable with the data above, call finalize_answer NOW. Do not repeat any tool you have already called."
+  }
+]

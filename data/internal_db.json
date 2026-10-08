@@ -1,0 +1,21 @@
+{
+  "invoices": [
+    {
+      "invoice_id": "INV-9843",
+      "vendor": "Amazon Web Services",
+      "amount": 1200.0,
+      "due_date": "2026-08-01",
+      "status": "SUCCESS",
+      "invoice_number": "AMZ-2026-0701"
+    },
+    {
+      "invoice_id": "INV-9844",
+      "vendor": "ABC Corp",
+      "amount": 9800.0,
+      "due_date": "2026-10-20",
+      "status": "SUCCESS",
+      "invoice_number": "ABC-2026-0901"
+    }
+  ],
+  "next_id": 9845
+}
