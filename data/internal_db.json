@@ -23,7 +23,15 @@
       "due_date": "2026-10-01",
       "status": "SUCCESS",
       "invoice_number": "AMZ-2026-0901"
+    },
+    {
+      "invoice_id": "INV-9846",
+      "vendor": "Amazon Web Services",
+      "amount": 1250.0,
+      "due_date": "2026-08-01",
+      "status": "SUCCESS",
+      "invoice_number": "AMZ-2026-30974"
     }
   ],
-  "next_id": 9846
+  "next_id": 9847
 }

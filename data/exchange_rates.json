@@ -23,7 +23,31 @@
       "date": "2026-10-09",
       "id": "FX-00002",
       "fetched_at": "2026-10-12T05:57:37"
+    },
+    {
+      "status": "SUCCESS",
+      "from": "INR",
+      "to": "USD",
+      "rate": 0.01034,
+      "amount": 1.0,
+      "converted": 0.01034,
+      "source": "frankfurter.app",
+      "date": "2026-10-09",
+      "id": "FX-00003",
+      "fetched_at": "2026-10-12T18:45:03"
+    },
+    {
+      "status": "SUCCESS",
+      "from": "INR",
+      "to": "USD",
+      "rate": 0.01034,
+      "amount": 1.0,
+      "converted": 0.01034,
+      "source": "frankfurter.app",
+      "date": "2026-10-09",
+      "id": "FX-00004",
+      "fetched_at": "2026-10-12T18:46:21"
     }
   ],
-  "next_id": 3
+  "next_id": 5
 }

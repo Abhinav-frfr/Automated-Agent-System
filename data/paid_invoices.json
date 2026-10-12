@@ -23,7 +23,19 @@
       "status": "SUCCESS",
       "paid_at": "2026-10-12T05:37:28",
       "notes": ""
+    },
+    {
+      "payment_id": "PMT-0003",
+      "vendor": "Amazon Web Services",
+      "amount": 1200.0,
+      "currency": "USD",
+      "due_date": "2026-08-01",
+      "invoice_number": "AMZ-2026-0701",
+      "approval_id": "APV-0010",
+      "status": "SUCCESS",
+      "paid_at": "2026-10-12T18:32:02",
+      "notes": ""
     }
   ],
-  "next_id": 3
+  "next_id": 4
 }

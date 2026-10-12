@@ -126,7 +126,35 @@
       "approved": true,
       "raw_answer": "yes",
       "decided_at": "2026-10-12T06:09:41"
+    },
+    {
+      "approval_id": "APV-0010",
+      "action": "PAY_INVOICE",
+      "summary": "Pay invoice AMZ-2026-0701 for $1200.00 to Amazon Web Services",
+      "details": {
+        "amount": 1200,
+        "due_date": "2026-08-01",
+        "invoice_number": "AMZ-2026-0701",
+        "vendor": "Amazon Web Services"
+      },
+      "approved": true,
+      "raw_answer": "yes",
+      "decided_at": "2026-10-12T18:31:56"
+    },
+    {
+      "approval_id": "APV-0011",
+      "action": "BUY_STOCK",
+      "summary": "Buy 10 shares of Amazon.com, Inc. at ~262.43 USD",
+      "details": {
+        "currency": "USD",
+        "price": 262.43,
+        "quantity": 10,
+        "symbol": "AMZN:NASDAQ"
+      },
+      "approved": false,
+      "raw_answer": "increase quantity to 100",
+      "decided_at": "2026-10-12T18:43:58"
     }
   ],
-  "next_id": 10
+  "next_id": 12
 }
