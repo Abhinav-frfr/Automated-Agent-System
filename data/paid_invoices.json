@@ -35,7 +35,19 @@
       "status": "SUCCESS",
       "paid_at": "2026-10-12T18:32:02",
       "notes": ""
+    },
+    {
+      "payment_id": "PMT-0004",
+      "vendor": "ABC Corp",
+      "amount": 9500.0,
+      "currency": "USD",
+      "due_date": "2026-09-01",
+      "invoice_number": "ABC-2026-0801",
+      "approval_id": "APV-0017",
+      "status": "SUCCESS",
+      "paid_at": "2026-10-12T21:36:37",
+      "notes": ""
     }
   ],
-  "next_id": 4
+  "next_id": 5
 }

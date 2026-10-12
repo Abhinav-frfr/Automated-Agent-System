@@ -35,7 +35,19 @@
       "status": "SUCCESS",
       "executed_at": "2026-10-12T06:10:34",
       "notes": "N/A"
+    },
+    {
+      "purchase_id": "PUR-0004",
+      "symbol": "GOOGL:NASDAQ",
+      "quantity": 5.0,
+      "price": 354.29,
+      "currency": "USD",
+      "total": 1771.45,
+      "approval_id": "APV-0014",
+      "status": "SUCCESS",
+      "executed_at": "2026-10-12T21:22:19",
+      "notes": ""
     }
   ],
-  "next_id": 4
+  "next_id": 5
 }

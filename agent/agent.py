@@ -6,6 +6,8 @@ Adds:
 - Stock purchase tools (buy_stock, list_purchases)
 - Separate PAY pipeline (search_payment, pay_invoice, verify_payment)
 - Exchange rate tool (get_exchange_rate, list_exchange_rates)
+- Hard refusal for invoice-fabrication requests (UNSUPPORTED task type) plus a
+  provenance guard on submit_invoice
 
 Internals:
     - memory stores OpenAI-style dicts (unchanged)
@@ -380,6 +382,22 @@ class Agent:
             for h in self._tool_history
         )
 
+    def _has_inspected_invoice(self) -> bool:
+        """True iff a real invoice file was found and/or read in this run.
+
+        Used to prove provenance before allowing submit_invoice. Fabricating an
+        invoice purely from chat text is rejected here.
+        """
+        for h in self._tool_history:
+            r = h.get("result")
+            if not isinstance(r, dict):
+                continue
+            if h["name"] == "search_files" and (r.get("count") or 0) > 0:
+                return True
+            if h["name"] == "read_file" and not r.get("error") and r.get("content"):
+                return True
+        return False
+
     def _policy_check(self, name: str, args: dict) -> dict | None:
         goal = self._goal or {}
         task_type = goal.get("task_type")
@@ -398,6 +416,16 @@ class Agent:
                     "error": (
                         "This WRITE goal requires human approval. "
                         "Call request_human_approval and get approved=true before submit_invoice."
+                    ),
+                    "blocked_by": "policy",
+                }
+            if not self._has_inspected_invoice():
+                return {
+                    "error": (
+                        "Policy violation: submit_invoice requires that a real invoice was "
+                        "found and inspected earlier in this run via search_files or read_file. "
+                        "The system has no capability to create invoices from chat — only to "
+                        "process invoices that already exist as files in data/invoices/."
                     ),
                     "blocked_by": "policy",
                 }
@@ -622,6 +650,31 @@ class Agent:
         self._goal = goal
         self._tool_history = []
         self._sig_counts = Counter()
+
+        # ------------------------------------------------------------------ #
+        # Hard refusal: no invoice-creation capability exists.
+        # Short-circuit before ever invoking the tool loop, so the LLM
+        # cannot mistake this for a WRITE task and call submit_invoice.
+        # ------------------------------------------------------------------ #
+        if goal.get("task_type") == "UNSUPPORTED":
+            summary = (
+                "Refused: this system has no capability to create, make, generate, issue, "
+                "or fabricate invoices. It only works with invoices that already exist as "
+                "files under data/invoices/. To process a real invoice, place the file "
+                "there and ask me to process it — e.g. 'Process the latest OpenAI invoice'."
+            )
+            self._log(f"[refuse]   {summary}")
+            return self._finish(
+                original_task=task,
+                resolved_task=resolved_task,
+                goal=goal,
+                status="refused_unsupported",
+                summary=summary,
+                evidence={
+                    "reason": "no_create_invoice_capability",
+                    "rejected_intent": resolved_task,
+                },
+            )
 
         try:
             browser_reset()

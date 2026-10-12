@@ -154,7 +154,93 @@
       "approved": false,
       "raw_answer": "increase quantity to 100",
       "decided_at": "2026-10-12T18:43:58"
+    },
+    {
+      "approval_id": "APV-0012",
+      "action": "SUBMIT_INVOICE",
+      "summary": "Create invoice OAI-2026-8938 for OpenAI",
+      "details": {
+        "amount": 4120,
+        "due_date": "2026-09-09",
+        "invoice_date": "2026-08-01",
+        "invoice_number": "OAI-2026-8938",
+        "vendor": "OpenAI"
+      },
+      "approved": true,
+      "raw_answer": "yes",
+      "decided_at": "2026-10-12T19:37:56"
+    },
+    {
+      "approval_id": "APV-0013",
+      "action": "PAY_INVOICE",
+      "summary": "Pay invoice OAI-2026-0801 for $4,120.00 to OpenAI",
+      "details": {
+        "amount": 4120,
+        "due_date": "2026-09-01",
+        "invoice_number": "OAI-2026-0801",
+        "vendor": "OpenAI"
+      },
+      "approved": false,
+      "raw_answer": "no",
+      "decided_at": "2026-10-12T20:13:19"
+    },
+    {
+      "approval_id": "APV-0014",
+      "action": "BUY_STOCK",
+      "summary": "Buy 5 shares of Google (Alphabet Inc) at ~ $354.29 per share",
+      "details": {
+        "currency": "USD",
+        "price": 354.29,
+        "quantity": 5,
+        "symbol": "GOOGL:NASDAQ"
+      },
+      "approved": true,
+      "raw_answer": "yes",
+      "decided_at": "2026-10-12T21:21:31"
+    },
+    {
+      "approval_id": "APV-0015",
+      "action": "SUBMIT_INVOICE",
+      "summary": "Record invoice ABC-2026-0901 for $9,800.00 from ABC Corp",
+      "details": {
+        "amount": 9800,
+        "due_date": "2026-10-20",
+        "invoice_date": "2026-09-01",
+        "invoice_number": "ABC-2026-0901",
+        "vendor": "ABC Corp"
+      },
+      "approved": true,
+      "raw_answer": "yes",
+      "decided_at": "2026-10-12T21:26:28"
+    },
+    {
+      "approval_id": "APV-0016",
+      "action": "SUBMIT_INVOICE",
+      "summary": "Record invoice ABC-2026-0801 for $9,500.00 due 2026-09-01 from ABC Corp",
+      "details": {
+        "amount": 9500,
+        "due_date": "2026-09-01",
+        "invoice_number": "ABC-2026-0801",
+        "vendor": "ABC Corp"
+      },
+      "approved": true,
+      "raw_answer": "yes",
+      "decided_at": "2026-10-12T21:32:43"
+    },
+    {
+      "approval_id": "APV-0017",
+      "action": "PAY_INVOICE",
+      "summary": "Pay invoice ABC-2026-0801 for $9500.00 to ABC Corp",
+      "details": {
+        "amount": 9500,
+        "due_date": "2026-09-01",
+        "invoice_number": "ABC-2026-0801",
+        "vendor": "ABC Corp"
+      },
+      "approved": true,
+      "raw_answer": "yes",
+      "decided_at": "2026-10-12T21:36:10"
     }
   ],
-  "next_id": 12
+  "next_id": 18
 }

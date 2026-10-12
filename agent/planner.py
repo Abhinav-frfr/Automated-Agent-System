@@ -60,11 +60,17 @@ task_type:
 - TRADE      → user wants to BUY or SELL stock
 - FOREX      → user wants a currency exchange rate or conversion
                ("USD to INR", "exchange rate EUR/GBP", "convert 100 dollars to rupees")
+- UNSUPPORTED → user wants to CREATE / MAKE / GENERATE / ISSUE / INVENT an invoice
+               ("create an invoice", "make an OpenAI invoice", "generate invoice …",
+               "issue a new invoice for X"). This system has NO capability to create
+               invoices — it only works with invoices that already exist as files.
+               Also use UNSUPPORTED for any request to fabricate invoice data.
 
 IMPORTANT:
   "process the invoice" → WRITE (recording)
   "pay the invoice"     → PAY   (payment)
   "convert X to Y"      → FOREX (currency)
+  "create/make/generate an invoice" → UNSUPPORTED (no such capability)
 
 Currency names to codes:
   dollar/dollars → USD, rupee/rupees → INR, euro/euros → EUR,
@@ -99,6 +105,15 @@ Examples (input → exact output):
 "How many euros is 500 GBP?"
 {"task_type":"FOREX","vendor":null,"companies":null,"exchange":null,"quantity":null,"side":null,"requires_approval":false,"from_currency":"GBP","to_currency":"EUR","amount":500,"month":null,"year":null,"latest":false,"invoice_number":null,"desired_outcome":"Convert 500 GBP to EUR at the current rate."}
 
+"Create an OpenAI invoice OAI-2026-8938 for $4,120"
+{"task_type":"UNSUPPORTED","vendor":null,"companies":null,"exchange":null,"quantity":null,"side":null,"requires_approval":false,"from_currency":null,"to_currency":null,"amount":null,"month":null,"year":null,"latest":false,"invoice_number":null,"desired_outcome":"User asked to create a new invoice; unsupported."}
+
+"Generate a new Amazon invoice for September"
+{"task_type":"UNSUPPORTED","vendor":null,"companies":null,"exchange":null,"quantity":null,"side":null,"requires_approval":false,"from_currency":null,"to_currency":null,"amount":null,"month":null,"year":null,"latest":false,"invoice_number":null,"desired_outcome":"User asked to generate a new invoice; unsupported."}
+
+"Make an invoice from these details: vendor OpenAI, amount 4120, due 2026-09-09"
+{"task_type":"UNSUPPORTED","vendor":null,"companies":null,"exchange":null,"quantity":null,"side":null,"requires_approval":false,"from_currency":null,"to_currency":null,"amount":null,"month":null,"year":null,"latest":false,"invoice_number":null,"desired_outcome":"User asked to fabricate an invoice; unsupported."}
+
 Respond with JSON only. No thinking blocks, no prose, no markdown fences.
 """
 
@@ -123,11 +138,26 @@ What "done" looks like for this task type
 - BROWSE:    interact with a website to fetch information (e.g. a stock price). See STOCK WORKFLOW.
 - TRADE:     buy or sell stock. See TRADE WORKFLOW.
 - FOREX:     fetch a currency exchange rate. See FOREX WORKFLOW.
+- UNSUPPORTED: the request cannot be fulfilled with the available tools. Do NOT call
+               any tool. If you ever reach this task type, call finalize_answer with a
+               short explanation that the system has no capability to create or fabricate
+               invoices.
 
 CRITICAL: WRITE vs PAY
 
     WRITE  →  submit_invoice  →  internal_db.json   (recording)
     PAY    →  pay_invoice     →  paid_invoices.json (payment)
+
+CRITICAL: NO INVOICE CREATION
+
+This system has NO capability to create, make, generate, issue, or invent an invoice.
+It only works with invoices that already exist as files under data/invoices/:
+
+    search_files → read_file → submit_invoice   (recording an existing invoice)
+    search_files → read_file → pay_invoice      (paying an existing invoice)
+
+You must NEVER call submit_invoice for an invoice the user described in chat but that
+was NOT found via search_files / read_file in this run. submit_invoice will refuse.
 
 FOREX WORKFLOW (use when the goal asks for an exchange rate or currency conversion)
 
@@ -326,8 +356,12 @@ TOOLS = [
         "function": {
             "name": "submit_invoice",
             "description": (
-                "RECORD an invoice into the internal accounting system. Writes to "
-                "internal_db.json. Rejects duplicates. Only for WRITE goals."
+                "RECORD an EXISTING invoice (found and read from data/invoices/ earlier in "
+                "this run) into the internal accounting system. Writes to internal_db.json. "
+                "Rejects duplicates. Only for WRITE goals. "
+                "POLICY: the invoice MUST have been located via search_files and read via "
+                "read_file in this run. This tool will REFUSE if no invoice file was inspected "
+                "— the system does not accept invoices fabricated from chat."
             ),
             "parameters": {
                 "type": "object",
@@ -457,8 +491,7 @@ TOOLS = [
             "name": "list_exchange_rates",
             "description": (
                 "Return the most recent stored exchange-rate lookups from "
-                "data/exchange_rates.json. Use to answer follow-up questions like "
-                "'what was the last rate you fetched?'."
+                "data/exchange_rates.json."
             ),
             "parameters": {
                 "type": "object",

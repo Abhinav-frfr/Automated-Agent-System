@@ -1,7 +1,8 @@
 """Goal classifier — pattern-first, LLM fallback.
 
-Adds FOREX detection (currency exchange / conversion). Existing invoice,
-payment, stock, and trade behavior is unchanged.
+Adds FOREX detection (currency exchange / conversion) and UNSUPPORTED detection
+(invoice fabrication requests). Existing invoice, payment, stock, and trade
+behavior is unchanged.
 """
 
 from __future__ import annotations
@@ -11,7 +12,7 @@ import re
 
 from agent.planner import CLASSIFIER_SYSTEM_PROMPT
 
-_VALID = {"READ", "AGGREGATE", "WRITE", "VERIFY", "BROWSE", "TRADE", "PAY", "FOREX"}
+_VALID = {"READ", "AGGREGATE", "WRITE", "VERIFY", "BROWSE", "TRADE", "PAY", "FOREX", "UNSUPPORTED"}
 
 _MONTHS = {
     "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
@@ -70,7 +71,6 @@ _KNOWN_COMPANY_ALIASES = [
 
 _KNOWN_EXCHANGES = {"NSE", "BSE", "NASDAQ", "NYSE", "AMEX"}
 
-# Currency codes we recognise as pattern hits (superset of what the API supports).
 _KNOWN_CURRENCIES = {
     "USD", "EUR", "GBP", "JPY", "INR", "AUD", "CAD", "CHF", "CNY", "HKD",
     "SGD", "NZD", "SEK", "NOK", "DKK", "PLN", "MXN", "BRL", "ZAR", "TRY",
@@ -124,6 +124,36 @@ _FOREX_MARKERS = (
 )
 
 _THINK_RE = re.compile(r" thinking.*?", re.DOTALL | re.IGNORECASE)
+
+# --------------------------------------------------------------------- #
+# Invoice-fabrication detection
+#
+# The system has no capability to create/make/generate/issue/fabricate/invent
+# an invoice. These phrases are matched to short-circuit the run.
+#
+# The regex requires a create-type verb within ~60 chars of the word
+# "invoice"/"invoices". We deliberately exclude cases where the middle words
+# are about reports/lists/summaries so "Create a report of all July invoices"
+# still classifies as AGGREGATE.
+# --------------------------------------------------------------------- #
+_CREATE_VERB_RE = re.compile(
+    r"\b(create|make|generate|issue|fabricate|invent)\b(.{0,60}?)\binvoices?\b",
+    re.IGNORECASE,
+)
+_REPORT_WORDS_RE = re.compile(
+    r"\b(report|list|summary|table|view|copy|duplicate|pdf|word|excel|spreadsheet)\b",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_create_invoice(text: str) -> bool:
+    m = _CREATE_VERB_RE.search(text)
+    if not m:
+        return False
+    middle = m.group(2) or ""
+    if _REPORT_WORDS_RE.search(middle):
+        return False
+    return True
 
 
 def _sniff_vendor(text: str) -> str | None:
@@ -215,14 +245,12 @@ def _sniff_currencies(text: str) -> list[str]:
     found: list[str] = []
     seen: set[str] = set()
 
-    # ISO codes (uppercase, word boundary). Include the lowercase variants.
     for m in re.finditer(r"\b([A-Za-z]{3})\b", text):
         code = m.group(1).upper()
         if code in _KNOWN_CURRENCIES and code not in seen:
             found.append(code)
             seen.add(code)
 
-    # Currency names.
     t = text.lower()
     for name, code in _CURRENCY_NAME_TO_CODE.items():
         if re.search(rf"\b{re.escape(name)}\b", t) and code not in seen:
@@ -233,7 +261,6 @@ def _sniff_currencies(text: str) -> list[str]:
 
 
 def _sniff_forex_amount(text: str) -> float | None:
-    """Look for 'convert X', 'X dollars', 'X USD' — a number near a currency word."""
     patterns = [
         r"\bconvert\s+(\d+(?:\.\d+)?)\b",
         r"\b(\d+(?:\.\d+)?)\s*(?:dollars?|rupees?|euros?|pounds?|yen|yuan|won|"
@@ -259,7 +286,6 @@ def _looks_like_forex(text: str) -> bool:
     currencies = _sniff_currencies(text)
     if has_marker:
         return True
-    # Two distinct currencies + a word that suggests conversion.
     if len(currencies) >= 2 and any(
         w in t for w in (" to ", " into ", " in ", " per ", " vs ", " versus ")
     ):
@@ -284,7 +310,12 @@ def _pattern_task_type(text: str) -> str | None:
             return "BROWSE"
         return None
 
-    # ----- Invoice tasks: VERIFY → PAY → WRITE → AGGREGATE → READ -----
+    # ----- Invoice tasks -----
+    # Fabrication first: creating/making/generating an invoice is unsupported.
+    if _looks_like_create_invoice(text):
+        return "UNSUPPORTED"
+
+    # VERIFY → PAY → WRITE → AGGREGATE → READ
     verify_markers = (
         "check whether", "check if", "was ", "were ", "is there",
         "has been", "have been", "already recorded", "already entered",
@@ -326,6 +357,7 @@ def _pattern_goal(task: str) -> dict:
     is_trade = ttype == "TRADE"
     is_pay = ttype == "PAY"
     is_forex = ttype == "FOREX"
+    is_unsupported = ttype == "UNSUPPORTED"
 
     requires_approval = False
     if is_trade or is_pay:
@@ -346,7 +378,7 @@ def _pattern_goal(task: str) -> dict:
 
     return {
         "task_type": ttype or "READ",
-        "vendor": None if (is_browse or is_trade or is_forex) else _sniff_vendor(task),
+        "vendor": None if (is_browse or is_trade or is_forex or is_unsupported) else _sniff_vendor(task),
         "companies": (_sniff_companies(task) if (is_browse or is_trade) else None),
         "exchange": _sniff_exchange(task) if (is_browse or is_trade) else None,
         "quantity": _sniff_quantity(task) if is_trade else None,
@@ -358,7 +390,7 @@ def _pattern_goal(task: str) -> dict:
         "month": _sniff_month(task),
         "year": _sniff_year(task),
         "latest": bool(re.search(r"\b(latest|most recent|newest|recent)\b", task, re.I)),
-        "invoice_number": None if (is_browse or is_trade or is_forex) else _sniff_invoice_number(task),
+        "invoice_number": None if (is_browse or is_trade or is_forex or is_unsupported) else _sniff_invoice_number(task),
         "desired_outcome": task,
     }
 

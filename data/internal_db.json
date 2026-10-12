@@ -26,12 +26,28 @@
     },
     {
       "invoice_id": "INV-9846",
-      "vendor": "Amazon Web Services",
-      "amount": 1250.0,
-      "due_date": "2026-08-01",
+      "vendor": "OpenAI",
+      "amount": 4250.0,
+      "due_date": "2026-10-15",
       "status": "SUCCESS",
-      "invoice_number": "AMZ-2026-30974"
+      "invoice_number": "OAI-2026-0901"
+    },
+    {
+      "invoice_id": "INV-9847",
+      "vendor": "OpenAI",
+      "amount": 4120.0,
+      "due_date": "2026-09-01",
+      "status": "SUCCESS",
+      "invoice_number": "OAI-2026-0801"
+    },
+    {
+      "invoice_id": "INV-9848",
+      "vendor": "ABC Corp",
+      "amount": 9500.0,
+      "due_date": "2026-09-01",
+      "status": "SUCCESS",
+      "invoice_number": "ABC-2026-0801"
     }
   ],
-  "next_id": 9847
+  "next_id": 9849
 }

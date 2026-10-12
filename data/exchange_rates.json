@@ -47,7 +47,19 @@
       "date": "2026-10-09",
       "id": "FX-00004",
       "fetched_at": "2026-10-12T18:46:21"
+    },
+    {
+      "status": "SUCCESS",
+      "from": "INR",
+      "to": "GBP",
+      "rate": 0.00789,
+      "amount": 1.0,
+      "converted": 0.00789,
+      "source": "frankfurter.app",
+      "date": "2026-10-12",
+      "id": "FX-00005",
+      "fetched_at": "2026-10-12T21:24:36"
     }
   ],
-  "next_id": 5
+  "next_id": 6
 }
