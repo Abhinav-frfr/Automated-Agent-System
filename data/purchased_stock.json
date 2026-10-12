@@ -23,7 +23,19 @@
       "status": "SUCCESS",
       "executed_at": "2026-10-09T13:12:08",
       "notes": ""
+    },
+    {
+      "purchase_id": "PUR-0003",
+      "symbol": "AAPL:NASDAQ",
+      "quantity": 10.0,
+      "price": 336.64,
+      "currency": "USD",
+      "total": 3366.4,
+      "approval_id": "APV-0009",
+      "status": "SUCCESS",
+      "executed_at": "2026-10-12T06:10:34",
+      "notes": "N/A"
     }
   ],
-  "next_id": 3
+  "next_id": 4
 }

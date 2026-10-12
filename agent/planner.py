@@ -24,26 +24,26 @@ Rules:
 Output ONLY the rewritten task. No explanation. No prefix. No quotes."""
 
 
-CLASSIFIER_SYSTEM_PROMPT = """You are a strict JSON classifier for invoice, stock, and trade requests.
+CLASSIFIER_SYSTEM_PROMPT = """You are a strict JSON classifier for invoice, stock, trade, and currency requests.
 
 Output a SINGLE JSON object with these keys:
   task_type, vendor, companies, exchange, quantity, side, requires_approval,
+  from_currency, to_currency, amount,
   month, year, latest, invoice_number, desired_outcome
 
 Extraction rules — follow literally:
-- vendor:         the company name for an INVOICE task, as written. "Amazon" → "Amazon".
-                  null for BROWSE and TRADE tasks.
-- companies:      a LIST of company names for a BROWSE or TRADE task (stock/market lookup
-                  or buy/sell). Example: ["Reliance Industries"]. For multi-company tasks,
-                  include every company: ["Reliance Industries","TCS","Infosys"].
-                  null for invoice tasks.
-- exchange:       optional exchange hint from the user (e.g. "NSE","NASDAQ"). Only set this
-                  if the user explicitly named an exchange. Otherwise null.
-- quantity:       number of shares for a TRADE task (e.g. "10 shares" → 10). null otherwise.
+- vendor:         the company name for an INVOICE task, as written. null otherwise.
+- companies:      a LIST of company names for a BROWSE or TRADE task.
+                  Example: ["Reliance Industries"]. null otherwise.
+- exchange:       optional stock-exchange hint (e.g. "NSE","NASDAQ"). null otherwise.
+- quantity:       number of shares for a TRADE task. null otherwise.
 - side:           "BUY" or "SELL" for a TRADE task. null otherwise.
 - requires_approval: true if the task contains "with approval", "get approval",
                   "request approval", "confirm before", "with confirmation".
                   ALWAYS true for TRADE and PAY tasks. Otherwise false.
+- from_currency:  ISO 4217 code (e.g. "USD") for a FOREX task. null otherwise.
+- to_currency:    ISO 4217 code (e.g. "INR") for a FOREX task. null otherwise.
+- amount:         number to convert for a FOREX task (default 1). null otherwise.
 - month:          integer 1-12 if a month name is present. Otherwise null.
 - year:           integer if a year is present. Otherwise null.
 - latest:         true if the task contains "latest","most recent","newest". Otherwise false.
@@ -51,47 +51,53 @@ Extraction rules — follow literally:
 - desired_outcome: one short sentence describing what success looks like.
 
 task_type:
-- READ       → user wants information from ONE invoice ("find","show me","what is")
-- AGGREGATE  → user wants a list or count across MULTIPLE invoices ("all","every","how many")
-- WRITE      → user wants an invoice entered/processed/recorded/submitted (recording in the internal DB)
-- PAY        → user wants to PAY an invoice ("pay the invoice", "settle the invoice",
-               "make a payment for X", "pay X"). This writes to the PAID invoices database,
-               NOT the internal processing database.
+- READ       → user wants information from ONE invoice
+- AGGREGATE  → user wants a list or count across MULTIPLE invoices
+- WRITE      → user wants an invoice entered/processed/recorded/submitted
+- PAY        → user wants to PAY an invoice ("pay the invoice", "settle the invoice")
 - VERIFY     → user wants to know whether an invoice is already in the internal system
-- BROWSE     → user wants information from a website (stock price, quote, page lookup)
-- TRADE      → user wants to BUY or SELL stock ("buy 10 shares of X", "purchase X stock")
+- BROWSE     → user wants information from a website (stock price, quote)
+- TRADE      → user wants to BUY or SELL stock
+- FOREX      → user wants a currency exchange rate or conversion
+               ("USD to INR", "exchange rate EUR/GBP", "convert 100 dollars to rupees")
 
-IMPORTANT: "process the invoice" → WRITE (recording). "pay the invoice" → PAY.
-These are DIFFERENT task types with different tools and different databases.
+IMPORTANT:
+  "process the invoice" → WRITE (recording)
+  "pay the invoice"     → PAY   (payment)
+  "convert X to Y"      → FOREX (currency)
+
+Currency names to codes:
+  dollar/dollars → USD, rupee/rupees → INR, euro/euros → EUR,
+  pound/pounds → GBP, yen → JPY, yuan/renminbi → CNY,
+  won → KRW, dirham → AED, riyal → SAR, real → BRL,
+  rand → ZAR, lira → TRY, peso → MXN, franc → CHF,
+  krona → SEK, krone → NOK, zloty → PLN.
 
 Examples (input → exact output):
 
 "Find the latest Amazon invoice"
-{"task_type":"READ","vendor":"Amazon","companies":null,"exchange":null,"quantity":null,"side":null,"requires_approval":false,"month":null,"year":null,"latest":true,"invoice_number":null,"desired_outcome":"Find and report the latest Amazon invoice."}
-
-"Give me all July invoices"
-{"task_type":"AGGREGATE","vendor":null,"companies":null,"exchange":null,"quantity":null,"side":null,"requires_approval":false,"month":7,"year":null,"latest":false,"invoice_number":null,"desired_outcome":"List every invoice dated July."}
-
-"Check whether the September Amazon invoice was entered"
-{"task_type":"VERIFY","vendor":"Amazon","companies":null,"exchange":null,"quantity":null,"side":null,"requires_approval":false,"month":9,"year":null,"latest":false,"invoice_number":null,"desired_outcome":"Confirm whether a September Amazon invoice exists in the internal system."}
+{"task_type":"READ","vendor":"Amazon","companies":null,"exchange":null,"quantity":null,"side":null,"requires_approval":false,"from_currency":null,"to_currency":null,"amount":null,"month":null,"year":null,"latest":true,"invoice_number":null,"desired_outcome":"Find and report the latest Amazon invoice."}
 
 "Process the latest OpenAI invoice"
-{"task_type":"WRITE","vendor":"OpenAI","companies":null,"exchange":null,"quantity":null,"side":null,"requires_approval":false,"month":null,"year":null,"latest":true,"invoice_number":null,"desired_outcome":"Enter and verify the latest OpenAI invoice in the internal system."}
+{"task_type":"WRITE","vendor":"OpenAI","companies":null,"exchange":null,"quantity":null,"side":null,"requires_approval":false,"from_currency":null,"to_currency":null,"amount":null,"month":null,"year":null,"latest":true,"invoice_number":null,"desired_outcome":"Enter and verify the latest OpenAI invoice in the internal system."}
 
 "Pay the latest Amazon invoice"
-{"task_type":"PAY","vendor":"Amazon","companies":null,"exchange":null,"quantity":null,"side":null,"requires_approval":true,"month":null,"year":null,"latest":true,"invoice_number":null,"desired_outcome":"Pay the latest Amazon invoice from the paid-invoices system."}
+{"task_type":"PAY","vendor":"Amazon","companies":null,"exchange":null,"quantity":null,"side":null,"requires_approval":true,"from_currency":null,"to_currency":null,"amount":null,"month":null,"year":null,"latest":true,"invoice_number":null,"desired_outcome":"Pay the latest Amazon invoice."}
 
 "What is the current stock price of Reliance Industries?"
-{"task_type":"BROWSE","vendor":null,"companies":["Reliance Industries"],"exchange":null,"quantity":null,"side":null,"requires_approval":false,"month":null,"year":null,"latest":false,"invoice_number":null,"desired_outcome":"Read Reliance Industries' current stock price."}
-
-"Find the NSE price of Reliance Industries."
-{"task_type":"BROWSE","vendor":null,"companies":["Reliance Industries"],"exchange":"NSE","quantity":null,"side":null,"requires_approval":false,"month":null,"year":null,"latest":false,"invoice_number":null,"desired_outcome":"Read Reliance Industries' NSE price."}
-
-"Compare Reliance, TCS and Infosys."
-{"task_type":"BROWSE","vendor":null,"companies":["Reliance Industries","TCS","Infosys"],"exchange":null,"quantity":null,"side":null,"requires_approval":false,"month":null,"year":null,"latest":false,"invoice_number":null,"desired_outcome":"Compare the stock prices of Reliance, TCS and Infosys."}
+{"task_type":"BROWSE","vendor":null,"companies":["Reliance Industries"],"exchange":null,"quantity":null,"side":null,"requires_approval":false,"from_currency":null,"to_currency":null,"amount":null,"month":null,"year":null,"latest":false,"invoice_number":null,"desired_outcome":"Read Reliance Industries' current stock price."}
 
 "Buy 10 shares of Apple"
-{"task_type":"TRADE","vendor":null,"companies":["Apple"],"exchange":null,"quantity":10,"side":"BUY","requires_approval":true,"month":null,"year":null,"latest":false,"invoice_number":null,"desired_outcome":"Buy 10 shares of Apple stock."}
+{"task_type":"TRADE","vendor":null,"companies":["Apple"],"exchange":null,"quantity":10,"side":"BUY","requires_approval":true,"from_currency":null,"to_currency":null,"amount":null,"month":null,"year":null,"latest":false,"invoice_number":null,"desired_outcome":"Buy 10 shares of Apple stock."}
+
+"What is the exchange rate from USD to INR?"
+{"task_type":"FOREX","vendor":null,"companies":null,"exchange":null,"quantity":null,"side":null,"requires_approval":false,"from_currency":"USD","to_currency":"INR","amount":1,"month":null,"year":null,"latest":false,"invoice_number":null,"desired_outcome":"Fetch the current USD to INR exchange rate."}
+
+"Convert 100 dollars to rupees"
+{"task_type":"FOREX","vendor":null,"companies":null,"exchange":null,"quantity":null,"side":null,"requires_approval":false,"from_currency":"USD","to_currency":"INR","amount":100,"month":null,"year":null,"latest":false,"invoice_number":null,"desired_outcome":"Convert 100 USD to INR at the current rate."}
+
+"How many euros is 500 GBP?"
+{"task_type":"FOREX","vendor":null,"companies":null,"exchange":null,"quantity":null,"side":null,"requires_approval":false,"from_currency":"GBP","to_currency":"EUR","amount":500,"month":null,"year":null,"latest":false,"invoice_number":null,"desired_outcome":"Convert 500 GBP to EUR at the current rate."}
 
 Respond with JSON only. No thinking blocks, no prose, no markdown fences.
 """
@@ -112,23 +118,38 @@ What "done" looks like for this task type
 - READ:      identify the correct single invoice and report vendor / amount / due_date / invoice_date.
 - AGGREGATE: gather every matching invoice and produce the list or count.
 - VERIFY:    look up the internal system and report whether the invoice exists, with evidence.
-- WRITE:     user asked to RECORD/process the invoice in the internal system. Check for an
-             existing record first (search_invoice), submit, then ALWAYS verify_invoice
-             against the values you read. You may not finalize a WRITE goal until
-             verify_invoice returns verified=true.
-- PAY:       user asked to PAY the invoice. Use the SEPARATE paid_invoices database.
-             See the PAY WORKFLOW below. NEVER use submit_invoice for a PAY goal.
-- BROWSE:    interact with a website to fetch information (e.g. a stock price). See the
-             STOCK WORKFLOW below.
-- TRADE:     buy or sell stock. See the TRADE WORKFLOW below.
+- WRITE:     user asked to RECORD/process the invoice in the internal system.
+- PAY:       user asked to PAY the invoice (paid_invoices.json). See PAY WORKFLOW.
+- BROWSE:    interact with a website to fetch information (e.g. a stock price). See STOCK WORKFLOW.
+- TRADE:     buy or sell stock. See TRADE WORKFLOW.
+- FOREX:     fetch a currency exchange rate. See FOREX WORKFLOW.
 
 CRITICAL: WRITE vs PAY
 
-    WRITE  →  submit_invoice  →  internal_db.json   (recording an invoice)
-    PAY    →  pay_invoice     →  paid_invoices.json (paying an invoice)
+    WRITE  →  submit_invoice  →  internal_db.json   (recording)
+    PAY    →  pay_invoice     →  paid_invoices.json (payment)
 
-These are DIFFERENT databases and DIFFERENT tools. If the user says "pay", it is
-ALWAYS a PAY goal and submit_invoice must NOT be called.
+FOREX WORKFLOW (use when the goal asks for an exchange rate or currency conversion)
+
+1. Identify the from-currency, to-currency, and amount from the DESIRED OUTCOME.
+   If the currencies are already in the goal (as ISO codes or currency names),
+   use them directly. If they are ambiguous, do NOT call any tool — call
+   finalize_answer asking for clarification.
+
+2. Call exactly one tool:
+       get_exchange_rate(from_currency="USD", to_currency="INR", amount=100)
+   The tool returns:
+       {{"status": "SUCCESS", "from": "USD", "to": "INR",
+         "rate": 83.45, "amount": 100, "converted": 8345.0,
+         "source": "frankfurter.app", "date": "2026-10-12", "id": "FX-00001"}}
+   Report the numbers exactly as returned — do not recompute or round them.
+
+3. finalize_answer with a short sentence and the full tool result as evidence.
+
+Rules for FOREX:
+- ONE call to get_exchange_rate is enough. Do NOT call it again with the same args.
+- If the tool returns status="ERROR", report the error in the summary — do not retry
+  the same pair more than once.
 
 PAY WORKFLOW (use when the goal asks to PAY an invoice)
 
@@ -151,7 +172,7 @@ PAY WORKFLOW (use when the goal asks to PAY an invoice)
    - approved=true  → capture approval_id, proceed to step 4.
    - approved=false → DO NOT call pay_invoice. Call finalize_answer reporting the rejection.
 
-4. Record the payment (this writes to the SEPARATE paid_invoices database):
+4. Record the payment:
        pay_invoice(vendor="...", amount=..., due_date="...",
                    invoice_number="...", approval_id="APV-xxxx")
 
@@ -222,9 +243,6 @@ TRADE WORKFLOW (use when the goal asks to BUY or SELL stock)
 
 HUMAN-IN-THE-LOOP for WRITE goals (only when REQUIRES HUMAN APPROVAL is true)
 
-The normal WRITE flow is unchanged when approval is not required. When
-REQUIRES HUMAN APPROVAL is true, insert one extra step before submit_invoice:
-
     request_human_approval(action="SUBMIT_INVOICE", summary=..., details=...)
     - approved=true  → proceed with submit_invoice.
     - approved=false → DO NOT call submit_invoice. finalize_answer reporting rejection.
@@ -245,8 +263,8 @@ Loop discipline (STRICT)
   yet called.
 
 Rules
-- Never invent amounts, dates, invoice numbers, IDs, prices, or approval IDs. Use only values
-  returned by tools.
+- Never invent amounts, dates, invoice numbers, IDs, prices, exchange rates, or approval IDs.
+  Use only values returned by tools.
 - If a tool fails, try a different candidate or query once, then finalize with what you have.
 - finalize_answer(summary, evidence) is how you finish.
 """
@@ -289,9 +307,7 @@ TOOLS = [
         "function": {
             "name": "search_invoice",
             "description": (
-                "Search the INTERNAL accounting system (internal_db.json) — records of "
-                "invoices that were processed/recorded. NOT for payments. Use search_payment "
-                "to check whether an invoice has been paid."
+                "Search the INTERNAL accounting system (internal_db.json). NOT for payments."
             ),
             "parameters": {
                 "type": "object",
@@ -311,8 +327,7 @@ TOOLS = [
             "name": "submit_invoice",
             "description": (
                 "RECORD an invoice into the internal accounting system. Writes to "
-                "internal_db.json. Rejects duplicates. Only for WRITE goals — never for "
-                "PAY goals."
+                "internal_db.json. Rejects duplicates. Only for WRITE goals."
             ),
             "parameters": {
                 "type": "object",
@@ -331,8 +346,8 @@ TOOLS = [
         "function": {
             "name": "verify_invoice",
             "description": (
-                "Fetch a stored RECORDED invoice (internal_db.json) and compare it to expected "
-                "values. Returns {verified: bool, mismatches: [...]}."
+                "Fetch a stored RECORDED invoice (internal_db.json) and compare it to "
+                "expected values. Returns {verified: bool, mismatches: [...]}."
             ),
             "parameters": {
                 "type": "object",
@@ -355,8 +370,7 @@ TOOLS = [
             "name": "search_payment",
             "description": (
                 "Search recorded PAYMENTS (paid_invoices.json). Use BEFORE paying to detect "
-                "duplicates. A non-empty result for a given invoice_number means the invoice "
-                "was already paid and must not be paid again."
+                "duplicates."
             ),
             "parameters": {
                 "type": "object",
@@ -375,19 +389,18 @@ TOOLS = [
         "function": {
             "name": "pay_invoice",
             "description": (
-                "Record a PAYMENT for an invoice into paid_invoices.json. SEPARATE from "
-                "submit_invoice. Rejects duplicates by invoice_number. Requires a prior "
-                "request_human_approval with approved=true; pass its approval_id."
+                "Record a PAYMENT for an invoice into paid_invoices.json. Rejects duplicates "
+                "by invoice_number. Requires prior request_human_approval with approved=true."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "vendor":         {"type": "string"},
                     "amount":         {"type": "number"},
-                    "due_date":       {"type": "string", "description": "YYYY-MM-DD"},
+                    "due_date":       {"type": "string"},
                     "invoice_number": {"type": "string"},
-                    "approval_id":    {"type": "string", "description": "APV-xxxx from request_human_approval."},
-                    "currency":       {"type": "string", "description": "e.g. 'USD', 'INR'. Default 'USD'."},
+                    "approval_id":    {"type": "string"},
+                    "currency":       {"type": "string"},
                     "notes":          {"type": "string"},
                 },
                 "required": ["vendor", "amount", "due_date", "approval_id"],
@@ -399,19 +412,60 @@ TOOLS = [
         "function": {
             "name": "verify_payment",
             "description": (
-                "Fetch a stored PAYMENT (paid_invoices.json) and compare it to expected values. "
-                "Returns {verified: bool, mismatches: [...]}. Always call after pay_invoice "
-                "before finalizing a PAY goal."
+                "Fetch a stored PAYMENT (paid_invoices.json) and compare to expected values. "
+                "Returns {verified: bool, mismatches: [...]}."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "payment_id":         {"type": "string"},
-                    "expected_vendor":    {"type": "string"},
-                    "expected_amount":    {"type": "number"},
-                    "expected_due_date":  {"type": "string"},
+                    "payment_id":        {"type": "string"},
+                    "expected_vendor":   {"type": "string"},
+                    "expected_amount":   {"type": "number"},
+                    "expected_due_date": {"type": "string"},
                 },
                 "required": ["payment_id"],
+            },
+        },
+    },
+    # ---------------------------------------------------------------- #
+    # Exchange rates (forex)
+    # ---------------------------------------------------------------- #
+    {
+        "type": "function",
+        "function": {
+            "name": "get_exchange_rate",
+            "description": (
+                "Fetch the current exchange rate between two currencies from a free public "
+                "API. Returns rate, converted amount, source, and the date the rate was "
+                "published. Every call is stored in data/exchange_rates.json. Use this for "
+                "FOREX goals ('USD to INR', 'convert 100 dollars to rupees')."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "from_currency": {"type": "string", "description": "ISO 4217 code, e.g. 'USD'."},
+                    "to_currency":   {"type": "string", "description": "ISO 4217 code, e.g. 'INR'."},
+                    "amount":        {"type": "number", "description": "Amount to convert. Default 1."},
+                },
+                "required": ["from_currency", "to_currency"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "list_exchange_rates",
+            "description": (
+                "Return the most recent stored exchange-rate lookups from "
+                "data/exchange_rates.json. Use to answer follow-up questions like "
+                "'what was the last rate you fetched?'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {"type": "integer", "description": "Default 20."},
+                },
+                "required": [],
             },
         },
     },
@@ -424,17 +478,13 @@ TOOLS = [
             "name": "web_search",
             "description": (
                 "Search the web via DuckDuckGo. Returns a list of results with title + URL, "
-                "plus a text excerpt. Use this to DISCOVER a company's stock ticker: search "
-                "e.g. 'Reliance Industries stock ticker NSE'. The results' titles and URLs "
-                "usually reveal the symbol (e.g. 'RELIANCE.NS', 'AAPL'). After this call "
-                "the browser is on the DuckDuckGo results page — you can browser_read() or "
-                "browser_open(result_url) to go deeper."
+                "plus a text excerpt. Use this to DISCOVER a company's stock ticker."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "query": {"type": "string"},
-                    "max_results": {"type": "integer", "description": "Default 10."},
+                    "max_results": {"type": "integer"},
                 },
                 "required": ["query"],
             },
@@ -447,10 +497,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "browser_open",
-            "description": (
-                "Open a URL. Returns a snapshot of the loaded page "
-                "(url, title, visible_text, headings, elements, numbers)."
-            ),
+            "description": "Open a URL. Returns a snapshot of the loaded page.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -465,10 +512,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "browser_read",
-            "description": (
-                "Snapshot the current page: url, title, visible_text, headings, "
-                "interactive elements, and any currency-shaped numbers."
-            ),
+            "description": "Snapshot the current page: url, title, visible_text, headings, elements, numbers.",
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
@@ -476,7 +520,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "browser_click",
-            "description": "Click an element by visible name or CSS selector. Returns the new snapshot.",
+            "description": "Click an element by visible name or CSS selector.",
             "parameters": {
                 "type": "object",
                 "properties": {"target": {"type": "string"}},
@@ -488,10 +532,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "browser_type",
-            "description": (
-                "Fill a textbox (label/placeholder/name). Set submit=true to wait for "
-                "autocomplete then press Enter. Returns the new snapshot."
-            ),
+            "description": "Fill a textbox. submit=true presses Enter after typing.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -507,7 +548,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "browser_press",
-            "description": "Press a key (e.g. 'Enter', 'Escape'). Returns the new snapshot.",
+            "description": "Press a keyboard key (e.g. 'Enter', 'Escape').",
             "parameters": {
                 "type": "object",
                 "properties": {"key": {"type": "string"}},
@@ -519,7 +560,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "browser_back",
-            "description": "Go back one page in history. Returns the new snapshot.",
+            "description": "Go back one page in history.",
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
     },
@@ -539,25 +580,22 @@ TOOLS = [
         },
     },
     # ---------------------------------------------------------------- #
-    # Human-in-the-loop + portfolio
+    # HITL + portfolio
     # ---------------------------------------------------------------- #
     {
         "type": "function",
         "function": {
             "name": "request_human_approval",
             "description": (
-                "Ask the human operator to approve or reject a proposed action. "
-                "BLOCKS until the operator answers y/n on the console. "
-                "Returns {approved: bool, approval_id: 'APV-xxxx', ...}. "
-                "Required before buy_stock and pay_invoice, and before submit_invoice "
-                "when the goal has requires_approval=true."
+                "Ask the human operator to approve or reject a proposed action. BLOCKS on "
+                "stdin. Returns {approved: bool, approval_id: 'APV-xxxx', ...}."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "action":  {"type": "string", "description": "Short label, e.g. 'BUY_STOCK', 'PAY_INVOICE'."},
-                    "summary": {"type": "string", "description": "One-sentence description of what you intend to do."},
-                    "details": {"type": "object", "description": "Structured details (symbol, quantity, price, amount, invoice_id, etc.)."},
+                    "action":  {"type": "string"},
+                    "summary": {"type": "string"},
+                    "details": {"type": "object"},
                 },
                 "required": ["action", "summary"],
             },
@@ -569,16 +607,16 @@ TOOLS = [
             "name": "buy_stock",
             "description": (
                 "Record a stock purchase to the internal portfolio. REQUIRES a prior "
-                "request_human_approval with approved=true; pass its approval_id."
+                "request_human_approval with approved=true."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "symbol":      {"type": "string", "description": "e.g. 'AAPL:NASDAQ' or 'RELIANCE:NSE'."},
-                    "quantity":    {"type": "number", "description": "Number of shares (> 0)."},
-                    "price":       {"type": "number", "description": "Per-share price (> 0)."},
-                    "currency":    {"type": "string", "description": "e.g. 'USD', 'INR'. Default 'USD'."},
-                    "approval_id": {"type": "string", "description": "The APV-xxxx returned by request_human_approval."},
+                    "symbol":      {"type": "string"},
+                    "quantity":    {"type": "number"},
+                    "price":       {"type": "number"},
+                    "currency":    {"type": "string"},
+                    "approval_id": {"type": "string"},
                     "notes":       {"type": "string"},
                 },
                 "required": ["symbol", "quantity", "price", "approval_id"],
@@ -589,7 +627,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "list_purchases",
-            "description": "List all recorded stock purchases (optionally filtered by symbol).",
+            "description": "List all recorded stock purchases.",
             "parameters": {
                 "type": "object",
                 "properties": {"symbol": {"type": "string"}},
@@ -606,7 +644,7 @@ TOOLS = [
             "name": "finalize_answer",
             "description": (
                 "Call when the goal is fully achieved. Provide a short summary and concrete "
-                "evidence (IDs, amounts, dates, prices, source URLs, approval IDs)."
+                "evidence (IDs, amounts, dates, prices, rates, source URLs, approval IDs)."
             ),
             "parameters": {
                 "type": "object",

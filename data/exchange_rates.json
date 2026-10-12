@@ -1,0 +1,29 @@
+{
+  "queries": [
+    {
+      "status": "SUCCESS",
+      "from": "USD",
+      "to": "INR",
+      "rate": 96.73,
+      "amount": 1.0,
+      "converted": 96.73,
+      "source": "frankfurter.app",
+      "date": "2026-10-09",
+      "id": "FX-00001",
+      "fetched_at": "2026-10-12T05:56:53"
+    },
+    {
+      "status": "SUCCESS",
+      "from": "JPY",
+      "to": "INR",
+      "rate": 0.61126,
+      "amount": 1.0,
+      "converted": 0.61126,
+      "source": "frankfurter.app",
+      "date": "2026-10-09",
+      "id": "FX-00002",
+      "fetched_at": "2026-10-12T05:57:37"
+    }
+  ],
+  "next_id": 3
+}

@@ -53,7 +53,7 @@ def main() -> None:
         print(f"Session '{args.session}' cleared.")
 
     agent = Agent(session=session)
-    print(f"Autonomous AI Worker — Day 5.1 (Groq · {agent.model})")
+    print(f"Autonomous AI Worker — Day 5.2 (Groq · {agent.model})")
     print(f"Chat:    {session.summary_line()}")
     print()
     print("Commands:  /new        start a fresh session")
@@ -61,10 +61,13 @@ def main() -> None:
     print("           /exit       quit")
     print()
     print("Try:")
-    print("  'Process the latest Amazon invoice.'    ← records into internal_db.json")
-    print("  'Pay the latest Amazon invoice.'        ← HITL → paid_invoices.json")
+    print("  'What is the exchange rate from USD to INR?'")
+    print("  'Convert 100 dollars to rupees.'")
+    print("  'How many euros is 500 GBP?'")
+    print("  'Process the latest Amazon invoice.'")
+    print("  'Pay the latest Amazon invoice.'        ← HITL")
     print("  'What is the stock symbol of Apple?'")
-    print("  'Buy 10 shares of Apple.'               ← HITL → purchased_stock.json")
+    print("  'Buy 10 shares of Apple.'               ← HITL")
     print()
 
     while True:

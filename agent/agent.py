@@ -2,10 +2,10 @@
 
 Adds:
 - multi-turn conversation via Session + reference resolution
-- HITL approval gate for TRADE goals, PAY goals, and requires_approval WRITE goals
+- HITL approval gate for TRADE, PAY, and requires_approval WRITE goals
 - Stock purchase tools (buy_stock, list_purchases)
 - Separate PAY pipeline (search_payment, pay_invoice, verify_payment)
-  writing to paid_invoices.json — distinct from submit_invoice / internal_db.json
+- Exchange rate tool (get_exchange_rate, list_exchange_rates)
 
 Internals:
     - memory stores OpenAI-style dicts (unchanged)
@@ -54,6 +54,7 @@ from tools.browser_tools import (
 )
 from tools.company_api import search_invoice, submit_invoice, verify_invoice
 from tools.file_tools import read_file, search_files
+from tools.forex_tools import get_exchange_rate, list_exchange_rates
 from tools.hitl_tools import request_human_approval
 from tools.payment_tools import pay_invoice, search_payment, verify_payment
 from tools.portfolio_tools import buy_stock, list_purchases
@@ -71,6 +72,9 @@ TOOL_REGISTRY = {
     "search_payment": search_payment,
     "pay_invoice": pay_invoice,
     "verify_payment": verify_payment,
+    # Exchange rates
+    "get_exchange_rate": get_exchange_rate,
+    "list_exchange_rates": list_exchange_rates,
     # Web search (DuckDuckGo)
     "web_search": web_search,
     # Browser (Playwright)
@@ -380,7 +384,6 @@ class Agent:
         goal = self._goal or {}
         task_type = goal.get("task_type")
 
-        # ---- submit_invoice rules ----
         if name == "submit_invoice":
             if task_type != "WRITE":
                 return {
@@ -399,7 +402,6 @@ class Agent:
                     "blocked_by": "policy",
                 }
 
-        # ---- pay_invoice rules ----
         if name == "pay_invoice":
             if task_type != "PAY":
                 return {
@@ -418,7 +420,6 @@ class Agent:
                     "blocked_by": "policy",
                 }
 
-        # ---- buy_stock rules ----
         if name == "buy_stock":
             if task_type != "TRADE":
                 return {
@@ -443,7 +444,6 @@ class Agent:
         goal = self._goal or {}
         task_type = goal.get("task_type")
 
-        # A rejection lets the agent finalize with a "user rejected" report.
         if self._human_rejected():
             return None
 
@@ -458,14 +458,12 @@ class Agent:
                 return {
                     "error": (
                         "Cannot finalize a WRITE goal before a verify_invoice call returns "
-                        "verified=true. Call verify_invoice with the expected values."
+                        "verified=true."
                     ),
                     "blocked_by": "finalize_gate",
                 }
 
         if task_type == "PAY":
-            # If the invoice was already paid, the agent may finalize without
-            # calling pay_invoice. Detect that case.
             already_paid = any(
                 h["name"] == "search_payment"
                 and isinstance(h.get("result"), dict)
@@ -485,8 +483,7 @@ class Agent:
                 return {
                     "error": (
                         "Cannot finalize a PAY goal before verify_payment returns verified=true. "
-                        "If the invoice was already paid, call search_payment first to confirm, "
-                        "then finalize with that evidence."
+                        "If the invoice was already paid, call search_payment first."
                     ),
                     "blocked_by": "finalize_gate",
                 }
@@ -501,8 +498,23 @@ class Agent:
             if not bought:
                 return {
                     "error": (
-                        "Cannot finalize a TRADE goal before buy_stock returns status=SUCCESS. "
-                        "Get human approval and call buy_stock, or wait for a rejection."
+                        "Cannot finalize a TRADE goal before buy_stock returns status=SUCCESS."
+                    ),
+                    "blocked_by": "finalize_gate",
+                }
+
+        if task_type == "FOREX":
+            ok = any(
+                h["name"] == "get_exchange_rate"
+                and isinstance(h.get("result"), dict)
+                and h["result"].get("status") == "SUCCESS"
+                for h in self._tool_history
+            )
+            if not ok:
+                return {
+                    "error": (
+                        "Cannot finalize a FOREX goal before get_exchange_rate returns "
+                        "status=SUCCESS. Call get_exchange_rate with the from/to currencies."
                     ),
                     "blocked_by": "finalize_gate",
                 }
@@ -598,14 +610,12 @@ class Agent:
     # Main loop
     # ------------------------------------------------------------------ #
     def run(self, task: str) -> dict:
-        # 1. Resolve references using session history (skip if empty).
         resolved_task = task
         if self.session.turns:
             resolved_task = resolve_references(self._llm_chat, self.session, task)
             if resolved_task != task:
                 self._log(f"[resolved] {resolved_task}")
 
-        # 2. Classify the resolved task.
         self._log(f"[classify] {resolved_task}")
         goal = classify(self._llm_chat, resolved_task)
         self._log(f"[goal]     {json.dumps(goal)}")
@@ -618,7 +628,6 @@ class Agent:
         except Exception:
             pass
 
-        # 3. Prime memory: system + recent session turns + current task.
         self.memory.reset()
         self.memory.add(
             "system",
@@ -632,7 +641,6 @@ class Agent:
             self.memory.add_raw(m)
         self.memory.add("user", resolved_task)
 
-        # 4. Loop.
         for step in range(1, self.max_steps + 1):
             msg = self._llm_chat(self.memory.get(), tools=TOOLS)
             content = msg.get("content") or ""

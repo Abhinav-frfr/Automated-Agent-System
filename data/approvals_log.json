@@ -98,7 +98,35 @@
       "approved": true,
       "raw_answer": "yes",
       "decided_at": "2026-10-12T05:37:27"
+    },
+    {
+      "approval_id": "APV-0008",
+      "action": "BUY_STOCK",
+      "summary": "Buy 5 shares of Alphabet Inc. Class A (GOOGL) at ~ $351.66 per share",
+      "details": {
+        "currency": "USD",
+        "price": 351.66,
+        "quantity": 5,
+        "symbol": "GOOGL:NASDAQ"
+      },
+      "approved": false,
+      "raw_answer": "yupp",
+      "decided_at": "2026-10-12T06:07:55"
+    },
+    {
+      "approval_id": "APV-0009",
+      "action": "BUY_STOCK",
+      "summary": "Buy 10 shares of Apple (AAPL) at ~336.64 USD",
+      "details": {
+        "currency": "USD",
+        "price": 336.64,
+        "quantity": 10,
+        "symbol": "AAPL:NASDAQ"
+      },
+      "approved": true,
+      "raw_answer": "yes",
+      "decided_at": "2026-10-12T06:09:41"
     }
   ],
-  "next_id": 8
+  "next_id": 10
 }

@@ -1,7 +1,7 @@
 """Goal classifier — pattern-first, LLM fallback.
 
-Adds PAY detection (invoice payment — distinct from WRITE). Existing invoice,
-BROWSE, and TRADE behavior is unchanged.
+Adds FOREX detection (currency exchange / conversion). Existing invoice,
+payment, stock, and trade behavior is unchanged.
 """
 
 from __future__ import annotations
@@ -11,7 +11,7 @@ import re
 
 from agent.planner import CLASSIFIER_SYSTEM_PROMPT
 
-_VALID = {"READ", "AGGREGATE", "WRITE", "VERIFY", "BROWSE", "TRADE", "PAY"}
+_VALID = {"READ", "AGGREGATE", "WRITE", "VERIFY", "BROWSE", "TRADE", "PAY", "FOREX"}
 
 _MONTHS = {
     "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
@@ -70,6 +70,38 @@ _KNOWN_COMPANY_ALIASES = [
 
 _KNOWN_EXCHANGES = {"NSE", "BSE", "NASDAQ", "NYSE", "AMEX"}
 
+# Currency codes we recognise as pattern hits (superset of what the API supports).
+_KNOWN_CURRENCIES = {
+    "USD", "EUR", "GBP", "JPY", "INR", "AUD", "CAD", "CHF", "CNY", "HKD",
+    "SGD", "NZD", "SEK", "NOK", "DKK", "PLN", "MXN", "BRL", "ZAR", "TRY",
+    "RUB", "KRW", "THB", "MYR", "IDR", "PHP", "VND", "AED", "SAR", "ILS",
+    "CZK", "HUF", "RON", "BGN", "HRK", "ISK",
+}
+
+_CURRENCY_NAME_TO_CODE = {
+    "dollar": "USD", "dollars": "USD",
+    "rupee": "INR", "rupees": "INR",
+    "euro": "EUR", "euros": "EUR",
+    "pound": "GBP", "pounds": "GBP",
+    "yen": "JPY",
+    "yuan": "CNY", "renminbi": "CNY",
+    "won": "KRW",
+    "dirham": "AED", "dirhams": "AED",
+    "riyal": "SAR", "riyals": "SAR",
+    "real": "BRL", "reais": "BRL",
+    "rand": "ZAR",
+    "lira": "TRY",
+    "peso": "MXN", "pesos": "MXN",
+    "franc": "CHF", "francs": "CHF",
+    "krona": "SEK", "krone": "NOK",
+    "zloty": "PLN",
+    "ruble": "RUB", "rubles": "RUB",
+    "ringgit": "MYR",
+    "baht": "THB",
+    "rupiah": "IDR",
+    "shekel": "ILS",
+}
+
 _BROWSE_MARKERS = (
     "stock", "share price", "ticker", "market price", "quote",
     "website", "web page", "browse", "navigate to", "open the site",
@@ -78,16 +110,18 @@ _BROWSE_MARKERS = (
 
 _TRADE_MARKERS = ("buy ", "purchase ", "sell ", "invest in ")
 
-# Approval wording for WRITE goals. PAY goals always require approval,
-# independent of these markers.
 _APPROVAL_MARKERS = (
     "with approval", "get approval", "request approval",
     "confirm before", "with confirmation", "get confirmation",
     "ask before", "need approval",
 )
 
-# Verb "pay" as a whole word (not "repay" / "payment gateway" style tokens).
 _PAY_RE = re.compile(r"\b(pay|paying|settle|settling)\b", re.IGNORECASE)
+
+_FOREX_MARKERS = (
+    "exchange rate", "forex", "currency conversion", "convert",
+    "conversion rate", "exchange-rate", "fx rate", "currency rate",
+)
 
 _THINK_RE = re.compile(r" thinking.*?", re.DOTALL | re.IGNORECASE)
 
@@ -176,9 +210,70 @@ def _sniff_requires_approval(text: str) -> bool:
     return any(m in t for m in _APPROVAL_MARKERS)
 
 
+def _sniff_currencies(text: str) -> list[str]:
+    """Return distinct currency codes mentioned in the text, in order."""
+    found: list[str] = []
+    seen: set[str] = set()
+
+    # ISO codes (uppercase, word boundary). Include the lowercase variants.
+    for m in re.finditer(r"\b([A-Za-z]{3})\b", text):
+        code = m.group(1).upper()
+        if code in _KNOWN_CURRENCIES and code not in seen:
+            found.append(code)
+            seen.add(code)
+
+    # Currency names.
+    t = text.lower()
+    for name, code in _CURRENCY_NAME_TO_CODE.items():
+        if re.search(rf"\b{re.escape(name)}\b", t) and code not in seen:
+            found.append(code)
+            seen.add(code)
+
+    return found
+
+
+def _sniff_forex_amount(text: str) -> float | None:
+    """Look for 'convert X', 'X dollars', 'X USD' — a number near a currency word."""
+    patterns = [
+        r"\bconvert\s+(\d+(?:\.\d+)?)\b",
+        r"\b(\d+(?:\.\d+)?)\s*(?:dollars?|rupees?|euros?|pounds?|yen|yuan|won|"
+        r"dirhams?|riyals?|reais|rand|lira|pesos?|francs?|kron[ae]|zloty|rubles?|"
+        r"ringgit|baht|rupiah|shekels?|USD|EUR|GBP|JPY|INR|AUD|CAD|CHF|CNY|"
+        r"HKD|SGD|NZD|SEK|NOK|DKK|PLN|MXN|BRL|ZAR|TRY|RUB|KRW|THB|MYR|IDR|"
+        r"PHP|VND|AED|SAR|ILS|CZK|HUF|RON|BGN|HRK|ISK)\b",
+        r"\bhow\s+(?:much|many)\s+\w+\s+is\s+(\d+(?:\.\d+)?)\b",
+    ]
+    for pat in patterns:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            try:
+                return float(m.group(1))
+            except ValueError:
+                continue
+    return None
+
+
+def _looks_like_forex(text: str) -> bool:
+    t = text.lower()
+    has_marker = any(m in t for m in _FOREX_MARKERS)
+    currencies = _sniff_currencies(text)
+    if has_marker:
+        return True
+    # Two distinct currencies + a word that suggests conversion.
+    if len(currencies) >= 2 and any(
+        w in t for w in (" to ", " into ", " in ", " per ", " vs ", " versus ")
+    ):
+        return True
+    return False
+
+
 def _pattern_task_type(text: str) -> str | None:
     t = text.lower()
     has_invoice = "invoice" in t or "invoices" in t
+
+    # FOREX first: currency pairs must not be mistaken for stock lookups.
+    if not has_invoice and _looks_like_forex(text):
+        return "FOREX"
 
     # TRADE before BROWSE: "buy Apple stock" must not become BROWSE.
     if not has_invoice and any(m in t for m in _TRADE_MARKERS):
@@ -198,7 +293,6 @@ def _pattern_task_type(text: str) -> str | None:
     if any(m in t for m in verify_markers):
         return "VERIFY"
 
-    # PAY is distinct from WRITE. Word-boundary "pay" / "settle".
     if _PAY_RE.search(t):
         return "PAY"
 
@@ -231,30 +325,40 @@ def _pattern_goal(task: str) -> dict:
     is_browse = ttype == "BROWSE"
     is_trade = ttype == "TRADE"
     is_pay = ttype == "PAY"
+    is_forex = ttype == "FOREX"
 
     requires_approval = False
-    if is_trade:
-        # Buying/selling stock always requires HITL.
-        requires_approval = True
-    elif is_pay:
-        # Paying an invoice always requires HITL.
+    if is_trade or is_pay:
         requires_approval = True
     elif ttype == "WRITE":
-        # WRITE only requires approval if the wording asks for it.
         requires_approval = _sniff_requires_approval(task)
+
+    from_currency = None
+    to_currency = None
+    amount = None
+    if is_forex:
+        currencies = _sniff_currencies(task)
+        if len(currencies) >= 2:
+            from_currency, to_currency = currencies[0], currencies[1]
+        elif len(currencies) == 1:
+            from_currency = currencies[0]
+        amount = _sniff_forex_amount(task)
 
     return {
         "task_type": ttype or "READ",
-        "vendor": None if (is_browse or is_trade) else _sniff_vendor(task),
+        "vendor": None if (is_browse or is_trade or is_forex) else _sniff_vendor(task),
         "companies": (_sniff_companies(task) if (is_browse or is_trade) else None),
         "exchange": _sniff_exchange(task) if (is_browse or is_trade) else None,
         "quantity": _sniff_quantity(task) if is_trade else None,
         "side": _sniff_side(task) if is_trade else None,
         "requires_approval": requires_approval,
+        "from_currency": from_currency,
+        "to_currency": to_currency,
+        "amount": amount,
         "month": _sniff_month(task),
         "year": _sniff_year(task),
         "latest": bool(re.search(r"\b(latest|most recent|newest|recent)\b", task, re.I)),
-        "invoice_number": None if (is_browse or is_trade) else _sniff_invoice_number(task),
+        "invoice_number": None if (is_browse or is_trade or is_forex) else _sniff_invoice_number(task),
         "desired_outcome": task,
     }
 
@@ -279,8 +383,8 @@ def _llm_fallback(llm_chat, task: str) -> dict | None:
     if goal.get("task_type") not in _VALID:
         return None
     for k in ("vendor", "companies", "exchange", "quantity", "side",
-              "requires_approval", "month", "year", "latest",
-              "invoice_number", "desired_outcome"):
+              "requires_approval", "from_currency", "to_currency", "amount",
+              "month", "year", "latest", "invoice_number", "desired_outcome"):
         goal.setdefault(k, None)
     return goal
 
@@ -297,6 +401,10 @@ def classify(llm_chat, task: str) -> dict:
         or (
             pattern_goal["task_type"] in {"BROWSE", "TRADE"}
             and not pattern_goal["companies"]
+        )
+        or (
+            pattern_goal["task_type"] == "FOREX"
+            and (not pattern_goal["from_currency"] or not pattern_goal["to_currency"])
         )
     )
     if not needs_llm:
