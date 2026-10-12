@@ -1,0 +1,29 @@
+{
+  "purchases": [
+    {
+      "purchase_id": "PUR-0001",
+      "symbol": "AAPL:NASDAQ",
+      "quantity": 1.0,
+      "price": 340.42,
+      "currency": "USD",
+      "total": 340.42,
+      "approval_id": "APV-0002",
+      "status": "SUCCESS",
+      "executed_at": "2026-10-09T05:19:51",
+      "notes": ""
+    },
+    {
+      "purchase_id": "PUR-0002",
+      "symbol": "AAPL:NASDAQ",
+      "quantity": 10.0,
+      "price": 340.42,
+      "currency": "USD",
+      "total": 3404.2,
+      "approval_id": "APV-0006",
+      "status": "SUCCESS",
+      "executed_at": "2026-10-09T13:12:08",
+      "notes": ""
+    }
+  ],
+  "next_id": 3
+}

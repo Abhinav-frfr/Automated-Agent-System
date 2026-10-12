@@ -1,0 +1,29 @@
+{
+  "payments": [
+    {
+      "payment_id": "PMT-0001",
+      "vendor": "Amazon Web Services",
+      "amount": 1480.0,
+      "currency": "USD",
+      "due_date": "2026-10-01",
+      "invoice_number": "AMZ-2026-0901",
+      "approval_id": "APV-0005",
+      "status": "SUCCESS",
+      "paid_at": "2026-10-09T08:46:30",
+      "notes": ""
+    },
+    {
+      "payment_id": "PMT-0002",
+      "vendor": "ABC Corp",
+      "amount": 9800.0,
+      "currency": "USD",
+      "due_date": "2026-10-20",
+      "invoice_number": "ABC-2026-0901",
+      "approval_id": "APV-0007",
+      "status": "SUCCESS",
+      "paid_at": "2026-10-12T05:37:28",
+      "notes": ""
+    }
+  ],
+  "next_id": 3
+}

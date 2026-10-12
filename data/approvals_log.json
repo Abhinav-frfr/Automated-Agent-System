@@ -1,0 +1,104 @@
+{
+  "approvals": [
+    {
+      "approval_id": "APV-0001",
+      "action": "BUY_STOCK",
+      "summary": "Buy 1 share of Apple Inc. (AAPL) at ~ $340.42 USD",
+      "details": {
+        "currency": "USD",
+        "price": 340.42,
+        "quantity": 1,
+        "symbol": "AAPL:NASDAQ"
+      },
+      "approved": true,
+      "raw_answer": "y",
+      "decided_at": "2026-10-09T05:17:11"
+    },
+    {
+      "approval_id": "APV-0002",
+      "action": "BUY_STOCK",
+      "summary": "Buy 1 share of Apple Inc. (AAPL) at ~ $340.42 USD",
+      "details": {
+        "currency": "USD",
+        "price": 340.42,
+        "quantity": 1,
+        "symbol": "AAPL:NASDAQ"
+      },
+      "approved": true,
+      "raw_answer": "y",
+      "decided_at": "2026-10-09T05:19:50"
+    },
+    {
+      "approval_id": "APV-0003",
+      "action": "BUY_STOCK",
+      "summary": "Buy 2 shares of Microsoft at ~USD 522.61",
+      "details": {
+        "currency": "USD",
+        "price": 522.61,
+        "quantity": 2,
+        "symbol": "MSFT:NASDAQ"
+      },
+      "approved": false,
+      "raw_answer": "n",
+      "decided_at": "2026-10-09T05:25:12"
+    },
+    {
+      "approval_id": "APV-0004",
+      "action": "PAY_INVOICE",
+      "summary": "Pay Amazon Web Services invoice AMZ-2026-0901 ($1,480.00)",
+      "details": {
+        "amount": 1480,
+        "due_date": "2026-10-01",
+        "invoice_id": "INV-9845",
+        "invoice_number": "AMZ-2026-0901",
+        "vendor": "Amazon Web Services"
+      },
+      "approved": true,
+      "raw_answer": "y",
+      "decided_at": "2026-10-09T08:36:04"
+    },
+    {
+      "approval_id": "APV-0005",
+      "action": "PAY_INVOICE",
+      "summary": "Pay invoice AMZ-2026-0901 for $1480.00 to Amazon Web Services",
+      "details": {
+        "amount": 1480,
+        "due_date": "2026-10-01",
+        "invoice_number": "AMZ-2026-0901",
+        "vendor": "Amazon Web Services"
+      },
+      "approved": true,
+      "raw_answer": "y",
+      "decided_at": "2026-10-09T08:45:59"
+    },
+    {
+      "approval_id": "APV-0006",
+      "action": "BUY_STOCK",
+      "summary": "Buy 10 shares of Apple Inc. at ~340.42 USD",
+      "details": {
+        "currency": "USD",
+        "price": 340.42,
+        "quantity": 10,
+        "symbol": "AAPL:NASDAQ"
+      },
+      "approved": true,
+      "raw_answer": "y",
+      "decided_at": "2026-10-09T13:11:20"
+    },
+    {
+      "approval_id": "APV-0007",
+      "action": "PAY_INVOICE",
+      "summary": "Pay invoice ABC-2026-0901 for $9,800.00 to ABC Corp",
+      "details": {
+        "amount": 9800,
+        "due_date": "2026-10-20",
+        "invoice_number": "ABC-2026-0901",
+        "vendor": "ABC Corp"
+      },
+      "approved": true,
+      "raw_answer": "yes",
+      "decided_at": "2026-10-12T05:37:27"
+    }
+  ],
+  "next_id": 8
+}

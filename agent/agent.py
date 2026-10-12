@@ -1,8 +1,11 @@
 """Agent loop using ChatGroq (LangChain).
 
-Same external interface as before:
-    agent = Agent()
-    result = agent.run("Find the latest Amazon invoice")
+Adds:
+- multi-turn conversation via Session + reference resolution
+- HITL approval gate for TRADE goals, PAY goals, and requires_approval WRITE goals
+- Stock purchase tools (buy_stock, list_purchases)
+- Separate PAY pipeline (search_payment, pay_invoice, verify_payment)
+  writing to paid_invoices.json — distinct from submit_invoice / internal_db.json
 
 Internals:
     - memory stores OpenAI-style dicts (unchanged)
@@ -33,19 +36,56 @@ from langchain_core.messages import (
 from langchain_groq import ChatGroq
 
 from agent.classifier import classify
+from agent.context import resolve_references
 from agent.memory import Memory
 from agent.planner import SYSTEM_PROMPT_TEMPLATE, TOOLS
+from agent.session import Session
+from tools.browser_tools import (
+    browser_back,
+    browser_click,
+    browser_open,
+    browser_press,
+    browser_read,
+    browser_reset,
+    browser_type,
+    browser_wait,
+    browser_wait_for,
+    web_search,
+)
 from tools.company_api import search_invoice, submit_invoice, verify_invoice
 from tools.file_tools import read_file, search_files
+from tools.hitl_tools import request_human_approval
+from tools.payment_tools import pay_invoice, search_payment, verify_payment
+from tools.portfolio_tools import buy_stock, list_purchases
 
 load_dotenv()
 
 TOOL_REGISTRY = {
+    # Invoice / internal (recording)
     "search_files": search_files,
     "read_file": read_file,
     "search_invoice": search_invoice,
     "submit_invoice": submit_invoice,
     "verify_invoice": verify_invoice,
+    # Payments (separate database)
+    "search_payment": search_payment,
+    "pay_invoice": pay_invoice,
+    "verify_payment": verify_payment,
+    # Web search (DuckDuckGo)
+    "web_search": web_search,
+    # Browser (Playwright)
+    "browser_open": browser_open,
+    "browser_read": browser_read,
+    "browser_click": browser_click,
+    "browser_type": browser_type,
+    "browser_press": browser_press,
+    "browser_back": browser_back,
+    "browser_wait_for": browser_wait_for,
+    "browser_wait": browser_wait,
+    # HITL + portfolio
+    "request_human_approval": request_human_approval,
+    "buy_stock": buy_stock,
+    "list_purchases": list_purchases,
 }
 
 FINALIZE = "finalize_answer"
@@ -57,8 +97,6 @@ DEBUG_PATH = Path(__file__).resolve().parent.parent / "data" / "debug_messages.j
 
 
 class Agent:
-    # Groq workaround: some models wrap the final answer in a tool call with
-    # an invented name (commentary, json, output, ...). We remap to finalize.
     _TOOL_ALIASES = {
         "commentary": FINALIZE,
         "final": FINALIZE,
@@ -77,12 +115,13 @@ class Agent:
     def __init__(
         self,
         model: str | None = None,
-        max_steps: int = 10,
+        max_steps: int = 15,
         verbose: bool = True,
         tool_retries: int = 2,
         debug: bool = True,
         api_key: str | None = None,
         temperature: float = 0.1,
+        session: Session | None = None,
     ):
         self.model = model or os.getenv("GROQ_MODEL", "openai/gpt-oss-120b")
         self.max_steps = max_steps
@@ -106,20 +145,16 @@ class Agent:
         )
 
         self.memory = Memory()
+        self.session = session or Session.load("default")
         self._goal: dict = {}
         self._tool_history: list[dict] = []
         self._sig_counts: Counter = Counter()
 
     # ------------------------------------------------------------------ #
-    # Logging
-    # ------------------------------------------------------------------ #
     def _log(self, msg: str) -> None:
         if self.verbose:
             print(msg)
 
-    # ------------------------------------------------------------------ #
-    # Message conversion (dict memory <-> LangChain messages)
-    # ------------------------------------------------------------------ #
     @staticmethod
     def _coerce_content(content) -> str:
         if isinstance(content, str):
@@ -192,9 +227,6 @@ class Agent:
 
         return {"content": content, "tool_calls": tool_calls}
 
-    # ------------------------------------------------------------------ #
-    # LLM call — same signature as before
-    # ------------------------------------------------------------------ #
     def _llm_chat(self, messages, tools=None, force_json: bool = False) -> dict:
         lc_messages = self._to_lc_messages(messages)
 
@@ -253,9 +285,6 @@ class Agent:
 
         return self._from_lc_response(response)
 
-    # ------------------------------------------------------------------ #
-    # Groq tool_use_failed recovery
-    # ------------------------------------------------------------------ #
     @staticmethod
     def _parse_failed_generation(raw: str) -> tuple[str, dict] | None:
         if not raw:
@@ -287,7 +316,6 @@ class Agent:
         return name, args
 
     def _try_recover_tool_use_failure(self, exc: Exception) -> dict | None:
-        # Extract parsed error body from the SDK exception.
         body = getattr(exc, "body", None)
         if body is None:
             resp = getattr(exc, "response", None)
@@ -308,14 +336,11 @@ class Agent:
             return None
         name, args = parsed
 
-        # Route 1: known alias (commentary, json, output, ...)
         mapped = self._TOOL_ALIASES.get(name.lower())
 
-        # Route 2: matches a real tool name
         if mapped is None and name in TOOL_REGISTRY:
             mapped = name
 
-        # Route 3: shape-based — arguments look like a finalize payload
         if mapped is None and isinstance(args, dict):
             if "summary" in args or "evidence" in args:
                 mapped = FINALIZE
@@ -333,23 +358,96 @@ class Agent:
         }
 
     # ------------------------------------------------------------------ #
-    # Policy + finalize gate
+    # Guards
     # ------------------------------------------------------------------ #
+    def _human_approved(self) -> bool:
+        return any(
+            h["name"] == "request_human_approval"
+            and isinstance(h.get("result"), dict)
+            and h["result"].get("approved") is True
+            for h in self._tool_history
+        )
+
+    def _human_rejected(self) -> bool:
+        return any(
+            h["name"] == "request_human_approval"
+            and isinstance(h.get("result"), dict)
+            and h["result"].get("approved") is False
+            for h in self._tool_history
+        )
+
     def _policy_check(self, name: str, args: dict) -> dict | None:
         goal = self._goal or {}
-        if name == "submit_invoice" and goal.get("task_type") != "WRITE":
-            return {
-                "error": (
-                    f"Policy violation: submit_invoice is only allowed for WRITE goals "
-                    f"(current task_type={goal.get('task_type')!r})."
-                ),
-                "blocked_by": "policy",
-            }
+        task_type = goal.get("task_type")
+
+        # ---- submit_invoice rules ----
+        if name == "submit_invoice":
+            if task_type != "WRITE":
+                return {
+                    "error": (
+                        f"Policy violation: submit_invoice is only allowed for WRITE goals "
+                        f"(current task_type={task_type!r}). For PAY goals, use pay_invoice."
+                    ),
+                    "blocked_by": "policy",
+                }
+            if goal.get("requires_approval") and not self._human_approved():
+                return {
+                    "error": (
+                        "This WRITE goal requires human approval. "
+                        "Call request_human_approval and get approved=true before submit_invoice."
+                    ),
+                    "blocked_by": "policy",
+                }
+
+        # ---- pay_invoice rules ----
+        if name == "pay_invoice":
+            if task_type != "PAY":
+                return {
+                    "error": (
+                        f"Policy violation: pay_invoice is only allowed for PAY goals "
+                        f"(current task_type={task_type!r})."
+                    ),
+                    "blocked_by": "policy",
+                }
+            if not self._human_approved():
+                return {
+                    "error": (
+                        "pay_invoice requires a successful request_human_approval "
+                        "(approved=true) earlier in this run. Call request_human_approval first."
+                    ),
+                    "blocked_by": "policy",
+                }
+
+        # ---- buy_stock rules ----
+        if name == "buy_stock":
+            if task_type != "TRADE":
+                return {
+                    "error": (
+                        "buy_stock is only allowed for TRADE goals. "
+                        f"(current task_type={task_type!r})"
+                    ),
+                    "blocked_by": "policy",
+                }
+            if not self._human_approved():
+                return {
+                    "error": (
+                        "buy_stock requires a successful request_human_approval "
+                        "(approved=true) earlier in this run. Call request_human_approval first."
+                    ),
+                    "blocked_by": "policy",
+                }
+
         return None
 
     def _finalize_gate(self) -> dict | None:
         goal = self._goal or {}
-        if goal.get("task_type") == "WRITE":
+        task_type = goal.get("task_type")
+
+        # A rejection lets the agent finalize with a "user rejected" report.
+        if self._human_rejected():
+            return None
+
+        if task_type == "WRITE":
             ok = any(
                 h["name"] == "verify_invoice"
                 and isinstance(h.get("result"), dict)
@@ -364,6 +462,51 @@ class Agent:
                     ),
                     "blocked_by": "finalize_gate",
                 }
+
+        if task_type == "PAY":
+            # If the invoice was already paid, the agent may finalize without
+            # calling pay_invoice. Detect that case.
+            already_paid = any(
+                h["name"] == "search_payment"
+                and isinstance(h.get("result"), dict)
+                and (h["result"].get("count") or 0) > 0
+                for h in self._tool_history
+            )
+            if already_paid:
+                return None
+
+            paid_and_verified = any(
+                h["name"] == "verify_payment"
+                and isinstance(h.get("result"), dict)
+                and h["result"].get("verified") is True
+                for h in self._tool_history
+            )
+            if not paid_and_verified:
+                return {
+                    "error": (
+                        "Cannot finalize a PAY goal before verify_payment returns verified=true. "
+                        "If the invoice was already paid, call search_payment first to confirm, "
+                        "then finalize with that evidence."
+                    ),
+                    "blocked_by": "finalize_gate",
+                }
+
+        if task_type == "TRADE":
+            bought = any(
+                h["name"] == "buy_stock"
+                and isinstance(h.get("result"), dict)
+                and h["result"].get("status") == "SUCCESS"
+                for h in self._tool_history
+            )
+            if not bought:
+                return {
+                    "error": (
+                        "Cannot finalize a TRADE goal before buy_stock returns status=SUCCESS. "
+                        "Get human approval and call buy_stock, or wait for a rejection."
+                    ),
+                    "blocked_by": "finalize_gate",
+                }
+
         return None
 
     # ------------------------------------------------------------------ #
@@ -423,26 +566,73 @@ class Agent:
                 return {"error": f"{type(e).__name__}: {e}"}
 
     # ------------------------------------------------------------------ #
+    def _finish(
+        self,
+        *,
+        original_task: str,
+        resolved_task: str,
+        goal: dict,
+        status: str,
+        summary: str,
+        evidence: dict | None,
+    ) -> dict:
+        try:
+            self.session.append_turn(
+                original_task=original_task,
+                resolved_task=resolved_task,
+                goal=goal,
+                status=status,
+                summary=summary,
+                evidence=evidence,
+            )
+        except Exception as e:
+            self._log(f"    (warning: could not save session turn: {e})")
+        return {
+            "status": status,
+            "summary": summary,
+            "goal": goal,
+            "evidence": evidence,
+        }
+
+    # ------------------------------------------------------------------ #
     # Main loop
     # ------------------------------------------------------------------ #
     def run(self, task: str) -> dict:
-        self._log(f"[classify] {task}")
-        goal = classify(self._llm_chat, task)
+        # 1. Resolve references using session history (skip if empty).
+        resolved_task = task
+        if self.session.turns:
+            resolved_task = resolve_references(self._llm_chat, self.session, task)
+            if resolved_task != task:
+                self._log(f"[resolved] {resolved_task}")
+
+        # 2. Classify the resolved task.
+        self._log(f"[classify] {resolved_task}")
+        goal = classify(self._llm_chat, resolved_task)
         self._log(f"[goal]     {json.dumps(goal)}")
         self._goal = goal
         self._tool_history = []
         self._sig_counts = Counter()
 
+        try:
+            browser_reset()
+        except Exception:
+            pass
+
+        # 3. Prime memory: system + recent session turns + current task.
         self.memory.reset()
         self.memory.add(
             "system",
             SYSTEM_PROMPT_TEMPLATE.format(
                 task_type=goal.get("task_type", "READ"),
-                desired_outcome=goal.get("desired_outcome") or task,
+                desired_outcome=goal.get("desired_outcome") or resolved_task,
+                requires_approval=bool(goal.get("requires_approval", False)),
             ),
         )
-        self.memory.add("user", task)
+        for m in self.session.recent_for_llm(k=3):
+            self.memory.add_raw(m)
+        self.memory.add("user", resolved_task)
 
+        # 4. Loop.
         for step in range(1, self.max_steps + 1):
             msg = self._llm_chat(self.memory.get(), tools=TOOLS)
             content = msg.get("content") or ""
@@ -455,19 +645,20 @@ class Agent:
 
             if not tool_calls:
                 text = content.strip()
-                return {
-                    "status": "completed_no_finalize" if text else "incomplete",
-                    "summary": text or "(model produced no output)",
-                    "goal": goal,
-                    "evidence": None,
-                }
+                return self._finish(
+                    original_task=task,
+                    resolved_task=resolved_task,
+                    goal=goal,
+                    status="completed_no_finalize" if text else "incomplete",
+                    summary=text or "(model produced no output)",
+                    evidence=None,
+                )
 
             for tc in tool_calls:
                 fn = tc.get("function", {}) if isinstance(tc, dict) else {}
                 name = fn.get("name", "")
                 args = fn.get("arguments", {})
 
-                # ---- finalize_answer is a control tool ----
                 if name == FINALIZE:
                     if isinstance(args, str):
                         try:
@@ -496,14 +687,15 @@ class Agent:
                         continue
 
                     self._log(f"\n[step {step}] → finalize_answer(...)")
-                    return {
-                        "status": "completed",
-                        "summary": (args.get("summary") or "").strip(),
-                        "goal": goal,
-                        "evidence": evidence,
-                    }
+                    return self._finish(
+                        original_task=task,
+                        resolved_task=resolved_task,
+                        goal=goal,
+                        status="completed",
+                        summary=(args.get("summary") or "").strip(),
+                        evidence=evidence,
+                    )
 
-                # ---- Ordinary tool ----
                 self._log(f"\n[step {step}] → {name}({json.dumps(args, default=str)})")
                 result = self._execute_tool(name, args)
                 preview = json.dumps(result, default=str)
@@ -516,7 +708,7 @@ class Agent:
                 )
 
                 note = ""
-                if step >= 3:
+                if step >= 5:
                     note = (
                         f"\n\n[coordinator] step {step}/{self.max_steps}. "
                         f"If the DESIRED OUTCOME is achievable with the data above, "
@@ -531,9 +723,11 @@ class Agent:
                     "content": preview + note,
                 })
 
-        return {
-            "status": "max_steps",
-            "summary": "Max steps reached without finalizing.",
-            "goal": goal,
-            "evidence": None,
-        }
+        return self._finish(
+            original_task=task,
+            resolved_task=resolved_task,
+            goal=goal,
+            status="max_steps",
+            summary="Max steps reached without finalizing.",
+            evidence=None,
+        )
